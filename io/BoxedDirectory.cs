@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Security;
 using Owasp.Untrust.BoxedPaths.Internal;
 
 namespace Owasp.Untrust.BoxedPaths.IO;
@@ -16,13 +17,48 @@ public static class BoxedDirectory
 
     public static void Delete(BoxedPath path, bool recursive = false) => Directory.Delete(path.ValidateAndExpose(), recursive);
 
-    // IMPORTANT: When returning path results, they must be converted back to BoxedPath objects.
-    public static BoxedPath[] GetDirectories(BoxedPath path)
+    private static BoxedAbsolute[] BoxFileSystemEntries(
+        bool ignoreUnboxed,
+        BoxedPath path,
+        Func<string, string[]> getFileSystemEntries
+    )
     {
-        string[] directoryStrings = Directory.GetDirectories(path.ValidateAndExpose());
-        
-        // Re-wrap and re-validate every result using the current path's Sandbox.
-        var sandbox = path.Sandbox;
-        return Array.ConvertAll(directoryStrings, dirString => new BoxedAbsolute(sandbox, dirString));
+        return
+            getFileSystemEntries(path.ValidateAndExpose())
+            .Select(fileSystemEntry =>
+            {
+                try
+                {
+                    return new BoxedAbsolute(path.Sandbox, fileSystemEntry);
+                }
+                catch (SecurityException)
+                {
+                    if (ignoreUnboxed)
+                    {
+                        return null;
+                    }
+                    else
+                    {
+                        throw;
+                    }
+                }
+            })
+            .OfType<BoxedAbsolute>() // Drop nulls
+            .ToArray();
+    }
+
+    public static BoxedPath[] GetFileSystemEntries(BoxedPath path, bool ignoreUnboxed = false)
+    {
+        return BoxFileSystemEntries(ignoreUnboxed, path, Directory.GetFileSystemEntries);
+    }
+
+    public static BoxedPath[] GetFiles(BoxedPath path, bool ignoreUnboxed = false)
+    {
+        return BoxFileSystemEntries(ignoreUnboxed, path, Directory.GetFiles);
+    }
+
+    public static BoxedPath[] GetDirectories(BoxedPath path, bool ignoreUnboxed = false)
+    {
+        return BoxFileSystemEntries(ignoreUnboxed, path, Directory.GetDirectories);
     }
 }

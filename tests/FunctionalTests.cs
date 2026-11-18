@@ -62,7 +62,7 @@ public class FunctionalTests : IDisposable
     public void LexicalTraversal_ShouldFail_WhenEscapingRoot(string relativePath)
     {
         // ARRANGE
-        BoxedPath boxedPath = BoxedPath.Of(_sandbox, relativePath);
+        BoxedPath boxedPath = BoxedPath.Of(_sandbox, TestHelper.WindowsPathToPlatformPath(relativePath));
 
         // ACT & ASSERT
         // The GetFullPath combined with the SandboxRootAbsolutePath should fail the initial StartsWith check
