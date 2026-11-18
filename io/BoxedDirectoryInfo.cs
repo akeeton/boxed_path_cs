@@ -1,5 +1,7 @@
 using System;
+using System.Diagnostics;
 using System.IO;
+using System.Security;
 using Owasp.Untrust.BoxedPaths.Internal;
 
 namespace Owasp.Untrust.BoxedPaths.IO;
@@ -25,30 +27,74 @@ public class BoxedDirectoryInfo : BoxedFileSystemInfo
     {
     }
 
+    private static IEnumerable<BoxedFileSystemInfo> BoxFileSystemInfos(
+        bool ignoreUnboxed,
+        IEnumerable<FileSystemInfo> fileSystemInfos,
+        Func<FileSystemInfo, BoxedFileSystemInfo> boxFileSystemInfo
+    )
+    {
+        return fileSystemInfos
+            .Select(fileSystemInfo =>
+            {
+                try
+                {
+                    return boxFileSystemInfo(fileSystemInfo);
+                }
+                catch (SecurityException)
+                {
+                    if (ignoreUnboxed)
+                    {
+                        return null;
+                    }
+                    else
+                    {
+                        throw;
+                    }
+                }
+            })
+            .OfType<BoxedFileSystemInfo>(); // Drop nulls
+    }
+
     // Methods specific to directories
 
-    // Secure Operation: Ensures returned file results are wrapped
-    public BoxedFileInfo[] GetFiles()
+    public BoxedFileSystemInfo[] GetFileSystemInfos(bool ignoreUnboxed = false)
     {
-        var directoryInfo = (DirectoryInfo)InnerInfo;
-        var files = directoryInfo.GetFiles();
-        var sandbox = ThePath.Sandbox; 
-        
-        return Array.ConvertAll(files, fileInfo => 
-            new BoxedFileInfo(new BoxedAbsolute(sandbox, fileInfo.FullName))
-        );
+        return BoxFileSystemInfos(
+                ignoreUnboxed,
+                ((DirectoryInfo)InnerInfo).GetFileSystemInfos(),
+                fsi =>
+                {
+                    var boxedPath = new BoxedAbsolute(ThePath.Sandbox, fsi.FullName);
+                    return fsi switch
+                    {
+                        FileInfo => new BoxedFileInfo(boxedPath),
+                        DirectoryInfo => new BoxedDirectoryInfo(boxedPath),
+                        _ => throw new UnreachableException($"Unexpected FileSystemInfo subtype: {fsi.GetType().Name}"),
+                    };
+                })
+            .ToArray();
     }
-    
-    // Secure Operation: Ensures returned directory results are wrapped
-    public BoxedDirectoryInfo[] GetDirectories()
+
+    // Secure Operation: Ensures returned file results are wrapped
+    public BoxedFileInfo[] GetFiles(bool ignoreUnboxed = false)
     {
-        var directoryInfo = (DirectoryInfo)InnerInfo;
-        var directories = directoryInfo.GetDirectories();
-        var sandbox = ThePath.Sandbox;
-        
-        return Array.ConvertAll(directories, dirInfo => 
-            new BoxedDirectoryInfo(new BoxedAbsolute(sandbox, dirInfo.FullName))
-        );
+        return BoxFileSystemInfos(
+                ignoreUnboxed,
+                ((DirectoryInfo)InnerInfo).GetFiles(),
+                fsi => new BoxedFileInfo(new BoxedAbsolute(ThePath.Sandbox, fsi.FullName)))
+            .Cast<BoxedFileInfo>()
+            .ToArray();
+    }
+
+    // Secure Operation: Ensures returned directory results are wrapped
+    public BoxedDirectoryInfo[] GetDirectories(bool ignoreUnboxed = false)
+    {
+        return BoxFileSystemInfos(
+                ignoreUnboxed,
+                ((DirectoryInfo)InnerInfo).GetDirectories(),
+                fsi => new BoxedDirectoryInfo(new BoxedAbsolute(ThePath.Sandbox, fsi.FullName)))
+            .Cast<BoxedDirectoryInfo>()
+            .ToArray();
     }
 
     public void Delete(bool recursive = false)

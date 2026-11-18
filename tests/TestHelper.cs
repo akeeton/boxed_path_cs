@@ -70,4 +70,12 @@ public static class TestHelper
             }
         }
     }
+
+    // Some tests assume that they will be run on Windows.  Replace backslashes
+    // ('\') with Path.DirectorySeparatorChar, which will have no effect on
+    // Windows but will change them to forward slashes ('/') on non-Windows.
+    public static string WindowsPathToPlatformPath(string windowsPath)
+    {
+        return windowsPath.Replace('\\', Path.DirectorySeparatorChar);
+    }
 }
